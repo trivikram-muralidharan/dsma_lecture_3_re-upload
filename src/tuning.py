@@ -119,11 +119,6 @@ def _build_model_from_config(cfg):
 
 # ── Sweep training closure ────────────────────────────────────────────────────
 
-# Module-level list populated by each sweep run so the caller can read back
-# the best config without needing the W&B API.
-_sweep_results = []
-
-
 def _make_train_fn(X_train, y_train):
     """
     Return a zero-argument callable suitable for wandb.agent().
@@ -132,7 +127,7 @@ def _make_train_fn(X_train, y_train):
     without arguments.  Each invocation:
       1. Reads hyperparameters from wandb.config
       2. Runs 3-fold CV and computes mean MAE
-      3. Logs mae to W&B and appends config to _sweep_results
+      3. Logs mae and rmse to W&B
     """
     def train_fn():
         with wandb.init() as run:
@@ -151,16 +146,10 @@ def _make_train_fn(X_train, y_train):
                 scoring = "neg_mean_squared_error",
                 n_jobs  = -1,
             )
-            mae = float(-mae_scores.mean())
-            rmse    = float((-mse_scores.mean()) ** 0.5)
+            mae  = float(-mae_scores.mean())
+            rmse = float((-mse_scores.mean()) ** 0.5)
 
             run.log({"mae": mae, "rmse": rmse})
-
-            _sweep_results.append({
-                "mae": mae,
-                "config":  dict(cfg),
-                "run_id":  run.id,
-            })
 
     return train_fn
 
@@ -185,18 +174,19 @@ def run_wandb_sweep(X_train, y_train, sweep_config: dict,
         best_config (dict): hyperparameter dict of the best trial
         best_mae    (float): CV MAE of the best trial
     """
-    global _sweep_results
-    _sweep_results = []
-
     sweep_id = wandb.sweep(sweep_config, project=project)
     train_fn = _make_train_fn(X_train, y_train)
     wandb.agent(sweep_id, function=train_fn, count=n_runs)
 
-    if not _sweep_results:
+    api  = wandb.Api()
+    runs = api.runs(project, filters={"sweep": sweep_id})
+    completed = [r for r in runs if "mae" in r.summary]
+
+    if not completed:
         raise RuntimeError("Sweep produced no results — check W&B connection.")
 
-    best      = min(_sweep_results, key=lambda r: r["mae"])
-    return sweep_id, best["config"], best["mae"]
+    best = min(completed, key=lambda r: r.summary["mae"])
+    return sweep_id, best.config, best.summary["mae"]
 
 
 def retrain_best_model(best_config: dict, X_train, y_train,

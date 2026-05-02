@@ -44,10 +44,11 @@ class ExperimentTracker:
     def __init__(self, project, run_name=None, tags=None, config=None):
         self.run = wandb.init(
             project = project,
+            id      = wandb.util.generate_id(),
             name    = run_name,
             tags    = tags or [],
             config  = config or {},
-            reinit = True,
+            reinit  = True,
         )
 
     # ── Metrics ───────────────────────────────────────────────────────────────

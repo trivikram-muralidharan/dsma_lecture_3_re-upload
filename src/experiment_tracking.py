@@ -65,8 +65,7 @@ class ExperimentTracker:
         Final aggregate metrics (MAE, RMSE after full evaluation).
         Appears in the run table for easy cross-run comparison.
         """
-        for key, value in metrics.items():
-            self.run.summary[key] = value
+        self.run.summary.update(metrics)
 
     # ── Interactive table ─────────────────────────────────────────────────────
 
